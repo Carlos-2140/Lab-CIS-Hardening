@@ -1,0 +1,489 @@
+hardening_router.py
+
+import argparse
+import getpass
+import json
+import re
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+import paramiko
+
+
+# ==========================================
+# CONFIGURACION DEL LABORATORIO
+# ==========================================
+
+HOST = "10.21.40.1"
+USUARIO = "auditor"
+DISPOSITIVO = "R-CIS"
+REPORTES = Path("reportes")
+
+REGLAS = {
+    "SSH_V2": {
+        "descripcion": "Utilizar exclusivamente SSH version 2",
+        "comando": "ip ssh version 2",
+    },
+    "HTTP_OFF": {
+        "descripcion": "Deshabilitar servidor HTTP",
+        "comando": "no ip http server",
+    },
+    "TIMEOUT_VTY": {
+        "descripcion": "Tiempo de inactividad VTY de 5 minutos",
+        "comando": "exec-timeout 5 0",
+    },
+}
+
+
+# ==========================================
+# CONEXION SSH
+# ==========================================
+
+def conectar(password):
+    ultimo_error = None
+
+    for intento in range(1, 4):
+        cliente = paramiko.SSHClient()
+        cliente.load_system_host_keys()
+        cliente.set_missing_host_key_policy(
+            paramiko.RejectPolicy()
+        )
+
+    cliente.connect(
+        hostname=HOST,
+        username=USUARIO,
+        password=password,
+        look_for_keys=False,
+        allow_agent=False,
+        timeout=20,
+        auth_timeout=30,
+        banner_timeout=30,
+    )
+
+    return cliente
+
+
+# ==========================================
+# COMUNICACION CON CISCO IOS
+# ==========================================
+
+def leer_hasta_prompt(canal, timeout=40):
+    salida = ""
+    inicio = time.monotonic()
+
+    patron = re.compile(
+        r"(?m)^[^\r\n]*[>#]\s*$"
+    )
+
+    while time.monotonic() - inicio < timeout:
+
+        if canal.recv_ready():
+            datos = canal.recv(65535)
+            salida += datos.decode(errors="replace")
+
+            if patron.search(
+                salida.replace("\r", "").split("\n")[-1]
+            ):
+                return salida
+
+        else:
+            if canal.closed or canal.exit_status_ready():
+                raise RuntimeError(
+                    "El canal SSH se cerro inesperadamente"
+                )
+
+            time.sleep(0.2)
+
+    raise TimeoutError(
+        "Tiempo agotado esperando respuesta Cisco"
+    )
+
+
+def ejecutar(canal, comando, timeout=40):
+    canal.send(comando + "\n")
+    return leer_hasta_prompt(canal, timeout)
+
+
+def comprobar_error(salida, comando):
+    errores = [
+        "% Invalid input",
+        "% Error",
+        "% Incomplete command",
+        "% Ambiguous command",
+        "% Authorization failed",
+    ]
+
+    if any(error in salida for error in errores):
+        raise RuntimeError(
+            f"Cisco rechazo el comando: {comando}\n{salida}"
+        )
+
+
+# ==========================================
+# OBTENER CONFIGURACION
+# ==========================================
+
+def obtener_config(canal):
+
+    salida = ejecutar(
+        canal, "show running-config", timeout=60
+    )
+
+    texto = salida.replace("\r", "")
+
+    inicio = texto.find("Building configuration")
+
+    if inicio == -1:
+        raise RuntimeError(
+            "No se encontro el inicio de la configuracion"
+        )
+
+    config = texto[inicio:]
+
+    if not re.search(r"(?m)^end\s*$", config):
+        raise RuntimeError(
+            "La configuracion recibida esta incompleta"
+        )
+
+    if not re.search(r"(?m)^version\s+", config):
+        raise RuntimeError(
+            "No se pudo validar la configuracion IOS"
+        )
+
+    return config
+
+
+# ==========================================
+# AUDITORIA DE CONTROLES
+# ==========================================
+
+def evaluar(config):
+
+    lineas = [
+        linea.strip()
+        for linea in config.splitlines()
+    ]
+
+    # Extraer configuracion VTY
+    bloque_vty = []
+    leyendo_vty = False
+
+    for linea in config.splitlines():
+
+        actual = linea.strip()
+
+        if actual == "line vty 0 4":
+            leyendo_vty = True
+            continue
+
+        if leyendo_vty:
+            if actual.startswith("line ") or actual in ("!", "end"):
+                break
+
+            bloque_vty.append(actual)
+
+    resultados = {
+        "SSH_V2": (
+            "ip ssh version 2" in lineas
+        ),
+
+        "HTTP_OFF": (
+            "no ip http server" in lineas
+        ),
+
+        "TIMEOUT_VTY": (
+            "exec-timeout 5 0" in bloque_vty
+        ),
+    }
+
+    return resultados
+
+
+# ==========================================
+# MOSTRAR RESULTADOS
+# ==========================================
+
+def mostrar(resultados):
+
+    cumplidos = 0
+
+    print("\n================================")
+    print(f"AUDITORIA CIS - {DISPOSITIVO}")
+    print("================================")
+
+    for clave, cumple in resultados.items():
+
+        estado = "CUMPLE" if cumple else "NO CUMPLE"
+
+        print(f"{clave}: {estado}")
+
+        if cumple:
+            cumplidos += 1
+
+    total = len(resultados)
+    porcentaje = (cumplidos / total) * 100
+
+    print("--------------------------------")
+    print(f"Controles cumplidos: {cumplidos}/{total}")
+    print(f"Cumplimiento seleccionado: {porcentaje:.1f}%")
+
+    return porcentaje
+
+
+# ==========================================
+# GENERAR INFORMES JSON
+# ==========================================
+
+def guardar_informe(resultados, nombre, etapa):
+
+    REPORTES.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    total = len(resultados)
+
+    cumplidos = sum(
+        1 for valor in resultados.values()
+        if valor
+    )
+
+    informe = {
+        "dispositivo": DISPOSITIVO,
+        "ip": HOST,
+        "fecha_utc": datetime.now(
+            timezone.utc
+        ).isoformat(),
+        "etapa": etapa,
+        "controles_evaluados": total,
+        "controles_cumplidos": cumplidos,
+        "porcentaje_cumplimiento": round(
+            cumplidos / total * 100, 2
+        ),
+        "controles": {},
+    }
+
+    for clave, cumple in resultados.items():
+
+        informe["controles"][clave] = {
+            "descripcion": REGLAS[clave]["descripcion"],
+            "cumple": cumple,
+            "estado": (
+                "CUMPLE" if cumple else "NO CUMPLE"
+            ),
+        }
+
+    ruta = REPORTES / nombre
+
+    with ruta.open(
+        "w", encoding="utf-8"
+    ) as archivo:
+
+        json.dump(
+            informe,
+            archivo,
+            indent=4,
+            ensure_ascii=False
+        )
+
+    print(f"\nInforme generado: {ruta}")
+
+
+# ==========================================
+# APLICAR HARDENING
+# ==========================================
+
+def aplicar(canal, resultados):
+
+    comandos = []
+
+    if not resultados["SSH_V2"]:
+        comandos.append("ip ssh version 2")
+
+    if not resultados["HTTP_OFF"]:
+        comandos.append("no ip http server")
+
+    if not resultados["TIMEOUT_VTY"]:
+        comandos.extend([
+            "line vty 0 4",
+            "exec-timeout 5 0",
+            "exit",
+        ])
+
+    if not comandos:
+        print("\nNo hay cambios pendientes.")
+        return True
+
+    print("\n================================")
+    print("COMANDOS DE HARDENING PROPUESTOS")
+    print("================================")
+
+    for comando in comandos:
+        print("  " + comando)
+
+    confirmar = input(
+        "\nAplicar cambios? (si/no): "
+    ).strip().lower()
+
+    if confirmar != "si":
+        print("\nOperacion cancelada.")
+        return False
+
+    print("\nAplicando configuraciones...")
+
+    salida = ejecutar(
+        canal, "configure terminal"
+    )
+    comprobar_error(
+        salida, "configure terminal"
+    )
+
+    for comando in comandos:
+
+        print(f"\nAplicando: {comando}")
+
+        salida = ejecutar(
+            canal, comando
+        )
+
+        print(salida)
+
+        comprobar_error(
+            salida, comando
+        )
+
+    salida = ejecutar(canal, "end")
+    comprobar_error(salida, "end")
+
+    print("\nComandos enviados correctamente.")
+
+    return True
+
+
+# ==========================================
+# PROGRAMA PRINCIPAL
+# ==========================================
+
+def main():
+
+    parser = argparse.ArgumentParser(
+        description="Auditoria y hardening Cisco IOS"
+    )
+
+    grupo = parser.add_mutually_exclusive_group(
+        required=True
+    )
+
+    grupo.add_argument(
+        "--audit",
+        action="store_true",
+        help="Auditar sin modificar configuracion"
+    )
+
+    grupo.add_argument(
+        "--apply",
+        action="store_true",
+        help="Aplicar hardening y generar informe"
+    )
+
+    args = parser.parse_args()
+
+    password = getpass.getpass(
+        "Contrasena SSH: "
+    )
+
+    cliente = None
+
+    try:
+
+        print(f"\nConectando a {DISPOSITIVO}...")
+
+        cliente = conectar(password)
+
+        canal = cliente.invoke_shell()
+
+        leer_hasta_prompt(canal)
+
+        ejecutar(
+            canal, "terminal length 0"
+        )
+
+        print("Conexion SSH establecida.")
+
+        config = obtener_config(canal)
+
+        antes = evaluar(config)
+
+        print("\n=== ESTADO INICIAL ===")
+
+        mostrar(antes)
+
+        if args.audit:
+
+            guardar_informe(
+                antes,
+                "router_antes.json",
+                "AUDITORIA_SIN_CAMBIOS"
+            )
+
+            print(
+                "\nAuditoria finalizada sin modificar el router."
+            )
+
+        elif args.apply:
+
+            guardar_informe(
+                antes,
+                "router_pre_aplicacion.json",
+                "ANTES_DE_APLICAR"
+            )
+
+            aplicado = aplicar(canal, antes)
+
+            if not aplicado:
+                return
+
+            # Leer nuevamente la configuracion
+            config_final = obtener_config(canal)
+
+            despues = evaluar(config_final)
+
+            print("\n=== ESTADO POSTERIOR ===")
+
+            mostrar(despues)
+
+            guardar_informe(
+                despues,
+                "router_despues.json",
+                "DESPUES_DEL_HARDENING"
+            )
+
+            if all(despues.values()):
+                print(
+                    "\nTodos los controles seleccionados cumplen."
+                )
+            else:
+                print(
+                    "\nATENCION: Hay controles pendientes."
+                )
+                raise SystemExit(2)
+
+            print(
+                "\nVerifica el acceso SSH antes de guardar"
+                " la configuracion del dispositivo."
+            )
+
+    except Exception as error:
+
+        print("\nERROR:", error)
+        raise SystemExit(1)
+
+    finally:
+
+        if cliente is not None:
+            cliente.close()
+
+
+if __name__ == "__main__":
+    main()

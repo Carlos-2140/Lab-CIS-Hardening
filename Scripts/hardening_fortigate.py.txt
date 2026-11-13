@@ -1,0 +1,480 @@
+hardening_fortigate.py
+
+#!/usr/bin/env python3
+"""Auditoria limitada de controles FortiGate 7.0 (no certificacion CIS)."""
+
+import argparse
+import getpass
+import json
+import re
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+import paramiko
+
+
+HOST = "10.21.40.129"
+REPORTS = Path("reportes")
+
+PROMPT = re.compile(r"(?m)^FortiGate[^\r\n]*#\s*$")
+
+ERRORS = (
+    "Command fail.",
+    "command parse error",
+    "Unknown action",
+    "incomplete command",
+)
+
+
+def command(shell, cmd, timeout=25):
+    """Ejecuta un comando y espera el prompt de FortiGate."""
+
+    while shell.recv_ready():
+        shell.recv(65535)
+
+    shell.send(cmd + "\n")
+
+    output = ""
+    started = time.monotonic()
+    last_data = started
+
+    while time.monotonic() - started < timeout:
+
+        if shell.recv_ready():
+            block = shell.recv(65535).decode(
+                "utf-8", "replace"
+            )
+            output += block
+            last_data = time.monotonic()
+
+        elif (
+            PROMPT.search(output)
+            and time.monotonic() - last_data > 0.4
+        ):
+            return output
+
+        time.sleep(0.08)
+
+    raise TimeoutError(
+        f"Sin prompt tras comando {cmd!r}. "
+        f"Salida parcial: {output[-400:]}"
+    )
+
+
+def value(raw, name):
+    """Extrae un valor 'set' de la configuracion FortiOS."""
+
+    pattern = (
+        r"^\s*set\s+"
+        + re.escape(name)
+        + r"\s+(.+?)\s*$"
+    )
+
+    hit = re.search(pattern, raw, re.M)
+
+    return hit.group(1).strip() if hit else None
+
+
+def audit(shell):
+    """Consulta cinco controles sin modificar configuracion."""
+
+    port1 = command(
+        shell, "show system interface port1"
+    )
+
+    port2 = command(
+        shell, "show system interface port2"
+    )
+
+    passwd = command(
+        shell,
+        "show full-configuration system password-policy"
+    )
+
+    glob = command(
+        shell,
+        "show full-configuration system global"
+    )
+
+    outputs = [
+        ("port1", port1),
+        ("port2", port2),
+        ("password-policy", passwd),
+        ("global", glob),
+    ]
+
+    for name, raw in outputs:
+        if any(
+            error.lower() in raw.lower()
+            for error in ERRORS
+        ):
+            raise RuntimeError(
+                f"Error consultando {name}: {raw[-350:]}"
+            )
+
+    a1 = (
+        value(port1, "allowaccess") or ""
+    ).split()
+
+    a2 = (
+        value(port2, "allowaccess") or ""
+    ).split()
+
+    enabled = (
+        value(passwd, "status") == "enable"
+    )
+
+    scope = (
+        value(passwd, "apply-to") or ""
+    ).split()
+
+    minlen = int(
+        value(passwd, "minimum-length") or "0"
+    )
+
+    complexity_fields = (
+        "min-lower-case-letter",
+        "min-upper-case-letter",
+        "min-number",
+        "min-non-alphanumeric",
+    )
+
+    mixed = all(
+        int(value(passwd, key) or "0") >= 1
+        for key in complexity_fields
+    )
+
+    timeout = value(glob, "admintimeout")
+
+    checks = {
+
+        "wan_sin_http_https_ssh": {
+            "cumple": not any(
+                protocol in a1
+                for protocol in (
+                    "http",
+                    "https",
+                    "ssh",
+                    "telnet",
+                )
+            ),
+            "observado": a1,
+            "objetivo": (
+                "WAN sin protocolos de "
+                "administracion remota"
+            ),
+        },
+
+        "lan_http_deshabilitado": {
+            "cumple": "http" not in a2,
+            "observado": a2,
+            "objetivo": (
+                "LAN sin HTTP "
+                "(PENDIENTE: HTTPS no funciona)"
+            ),
+        },
+
+        "timeout_admin_max_5_min": {
+            "cumple": (
+                timeout is not None
+                and timeout.isdigit()
+                and 0 < int(timeout) <= 5
+            ),
+            "observado": timeout,
+            "objetivo": "1 a 5 minutos",
+        },
+
+        "ssh_v1_deshabilitado": {
+            "cumple": (
+                value(glob, "admin-ssh-v1")
+                == "disable"
+            ),
+            "observado": value(
+                glob, "admin-ssh-v1"
+            ),
+            "objetivo": "disable",
+        },
+
+        "politica_contrasenas_admin": {
+            "cumple": (
+                enabled
+                and "admin-password" in scope
+                and minlen >= 12
+                and mixed
+            ),
+            "observado": {
+                "status": value(
+                    passwd, "status"
+                ),
+                "apply_to": scope,
+                "minimum_length": minlen,
+                "complejidad_minima_1_cada_tipo": mixed,
+            },
+            "objetivo": (
+                "Habilitada para administradores, "
+                "12 caracteres y cuatro clases"
+            ),
+        },
+    }
+
+    good = sum(
+        control["cumple"]
+        for control in checks.values()
+    )
+
+    return {
+        "fecha_utc": datetime.now(
+            timezone.utc
+        ).isoformat(),
+        "dispositivo": HOST,
+        "version_objetivo": "FortiOS 7.0.9",
+        "alcance": (
+            "5 controles seleccionados; "
+            "no es certificacion CIS integral"
+        ),
+        "cumple": good,
+        "total": len(checks),
+        "controles": checks,
+        "nota": (
+            "HTTP LAN no se corrige hasta "
+            "recuperar y verificar HTTPS"
+        ),
+    }
+
+
+def save(filename, report):
+    """Guarda el reporte de auditoria en JSON."""
+
+    REPORTS.mkdir(exist_ok=True)
+
+    destination = REPORTS / filename
+
+    destination.write_text(
+        json.dumps(
+            report,
+            indent=2,
+            ensure_ascii=False,
+        ) + "\n",
+        encoding="utf-8",
+    )
+
+    print(
+        f"Informe: {destination} "
+        f"({report['cumple']}/{report['total']} controles)"
+    )
+
+
+def apply(shell, report):
+    """Aplica correcciones sin deshabilitar HTTP LAN."""
+
+    checks = report["controles"]
+
+    if not checks["wan_sin_http_https_ssh"]["cumple"]:
+
+        commands = (
+            "config system interface",
+            'edit "port1"',
+            "set allowaccess ping",
+            "next",
+            "end",
+        )
+
+        for cmd in commands:
+            out = command(shell, cmd)
+
+            if any(
+                error.lower() in out.lower()
+                for error in ERRORS
+            ):
+                raise RuntimeError(
+                    f"Fallo {cmd}: {out[-450:]}"
+                )
+
+        print(
+            "WAN: retirado acceso administrativo; "
+            "ping conservado"
+        )
+
+    if not checks["politica_contrasenas_admin"]["cumple"]:
+
+        commands = (
+            "config system password-policy",
+            "set status enable",
+            "set apply-to admin-password",
+            "set minimum-length 12",
+            "set min-lower-case-letter 1",
+            "set min-upper-case-letter 1",
+            "set min-number 1",
+            "set min-non-alphanumeric 1",
+            "end",
+        )
+
+        for cmd in commands:
+            out = command(shell, cmd)
+
+            if any(
+                error.lower() in out.lower()
+                for error in ERRORS
+            ):
+                raise RuntimeError(
+                    f"Fallo {cmd}: {out[-450:]}"
+                )
+
+        print(
+            "Politica de contrasenas "
+            "de administradores habilitada"
+        )
+
+    # NO deshabilitar HTTP en port2:
+    # La GUI HTTPS continua fallando.
+
+
+def main():
+
+    parser = argparse.ArgumentParser(
+        description=__doc__
+    )
+
+    mode = parser.add_mutually_exclusive_group(
+        required=True
+    )
+
+    mode.add_argument(
+        "--audit",
+        action="store_true",
+    )
+
+    mode.add_argument(
+        "--apply",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--host",
+        default=HOST,
+    )
+
+    parser.add_argument(
+        "--user",
+        default="admin",
+    )
+
+    args = parser.parse_args()
+
+    password = getpass.getpass(
+        f"Contraseña SSH de "
+        f"{args.user}@{args.host}: "
+    )
+
+    client = paramiko.SSHClient()
+
+    client.load_system_host_keys()
+
+    client.set_missing_host_key_policy(
+        paramiko.RejectPolicy()
+    )
+
+    try:
+
+        client.connect(
+            args.host,
+            username=args.user,
+            password=password,
+            timeout=12,
+            auth_timeout=12,
+            banner_timeout=12,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+
+        shell = client.invoke_shell(
+            width=200,
+            height=200,
+        )
+
+        time.sleep(0.5)
+
+        while shell.recv_ready():
+            shell.recv(65535)
+
+        before = audit(shell)
+
+        if args.audit:
+            save(
+                "fortigate_antes.json",
+                before,
+            )
+            return
+
+        save(
+            "fortigate_pre_aplicacion.json",
+            before,
+        )
+
+        print(
+            "Se aplicaran SOLO: restriccion WAN "
+            "(port1) y politica de contrasenas."
+        )
+
+        print(
+            "ATENCION: FortiOS puede solicitar "
+            "actualizar la contraseña en "
+            "el siguiente inicio de sesion."
+        )
+
+        print(
+            "NO se modificara HTTP de LAN "
+            "(port2), HTTPS, SSH, IPs "
+            "ni politicas del firewall."
+        )
+
+        confirmation = input(
+            "Escribe si para aplicar: "
+        ).strip().lower()
+
+        if confirmation != "si":
+            print(
+                "Cancelado. No se modifico "
+                "la configuracion."
+            )
+            return
+
+        try:
+            apply(shell, before)
+
+        finally:
+            try:
+                after = audit(shell)
+
+                save(
+                    "fortigate_despues.json",
+                    after,
+                )
+
+            except Exception as error:
+                print(
+                    "No se pudo completar la "
+                    "auditoria posterior: "
+                    f"{error}",
+                    file=sys.stderr,
+                )
+                raise
+
+    except paramiko.BadHostKeyException:
+        print(
+            "ERROR: la clave SSH del dispositivo "
+            "no coincide con known_hosts. "
+            "Verificar fingerprint en consola.",
+            file=sys.stderr,
+        )
+        raise
+
+    finally:
+        client.close()
+
+
+if __name__ == "__main__":
+    main()
+

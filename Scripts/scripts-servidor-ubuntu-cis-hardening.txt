@@ -1,0 +1,184 @@
+PRACTICA DE AUDITORIA Y HARDENING CIS EN GNS3
+COMANDOS DE CONFIGURACION DE UBUNTU SERVER
+==============================================
+
+Servidor: Ubuntu Server 24.04.5 LTS (Noble Numbat)
+Interfaz de red: ens3
+IP estatica: 10.21.40.138/25
+Gateway y FortiGate LAN: 10.21.40.129
+Switch SW-CIS: 10.21.40.130
+Router R-CIS (enlace de transito): 10.21.40.1
+Windows 10 del laboratorio: 10.21.40.140
+DNS: 8.8.8.8, 1.1.1.1
+Python: 3.12.3
+Paramiko: 3.5.1
+Directorio del proyecto: /home/carlos2140/CIS-Hardening-GNS3
+
+NOTA: Este registro documenta los parametros REALES verificados en Ubuntu.
+Los comandos estan organizados por etapas, siguiendo el formato de la
+practica. Algunos comandos de preparacion se incluyen como referencia
+reproducible; no se dispone del historial completo para afirmar que
+se ejecutaron literalmente durante la instalacion original.
+NO ejecutar todo este TXT de una vez sobre el servidor ya configurado.
+No se incluyen contrasenas ni llaves SSH.
+
+1. IDENTIFICACION DEL SISTEMA OPERATIVO
+---------------------------------------
+cat /etc/os-release
+uname -a
+
+# Resultado confirmado:
+# PRETTY_NAME="Ubuntu 24.04.5 LTS"
+# VERSION_ID="24.04"
+# VERSION_CODENAME=noble
+
+2. CONFIGURACION DE RED ESTATICA CON NETPLAN
+-------------------------------------------
+sudo nano /etc/netplan/50-cloud-init.yaml
+
+# Contenido REAL recuperado del archivo Netplan:
+# network:
+#   version: 2
+#   ethernets:
+#     ens3:
+#       dhcp4: false
+#       addresses:
+#         - 10.21.40.138/25
+#       routes:
+#         - to: default
+#           via: 10.21.40.129
+#       nameservers:
+#         addresses:
+#           - 8.8.8.8
+#           - 1.1.1.1
+
+# Comandos de aplicacion (solo si se modifica Netplan):
+# sudo netplan generate
+# sudo netplan try
+# sudo netplan apply
+
+# Comandos de verificacion utilizados:
+sudo cat /etc/netplan/50-cloud-init.yaml
+ip -4 addr show ens3
+ip route
+
+# Resultados confirmados:
+# inet 10.21.40.138/25 ... scope global ens3
+# default via 10.21.40.129 dev ens3 proto static
+# 10.21.40.128/25 dev ens3 proto kernel scope link src 10.21.40.138
+
+3. PRUEBAS DE CONECTIVIDAD CON LA TOPOLOGIA
+------------------------------------------
+# Dispositivos de la practica:
+ping -c 4 10.21.40.129    # FortiGate LAN
+ping -c 4 10.21.40.130    # Switch SW-CIS
+ping -c 4 10.21.40.1      # Router R-CIS (enlace transitado)
+
+# Pruebas opcionales de salida y DNS:
+ping -c 4 8.8.8.8
+getent hosts google.com
+
+# Nota: en las pruebas del laboratorio el router presento una respuesta
+# intermitente en algunas ocasiones, aunque posteriormente respondio.
+
+4. PREPARACION DE PYTHON Y ENTORNO VIRTUAL
+-----------------------------------------
+# Comandos de preparacion reproducibles (no son una transcripcion
+# literal verificada del historial de instalacion):
+# sudo apt update
+# sudo apt install -y python3 python3-venv python3-pip openssh-client
+# mkdir -p ~/CIS-Hardening-GNS3
+# cd ~/CIS-Hardening-GNS3
+# python3 -m venv venv
+
+# Activar el entorno existente en el laboratorio:
+cd ~/CIS-Hardening-GNS3
+source venv/bin/activate
+
+# Verificar versiones REALES recuperadas:
+python3 --version
+python -m pip show paramiko
+
+# Versiones confirmadas:
+# Python 3.12.3
+# Paramiko 3.5.1
+
+# Dependencia utilizada, para instalaciones reproducibles:
+# python -m pip install 'paramiko==3.5.1'
+
+5. SCRIPTS DE AUDITORIA Y HARDENING DE LOS DISPOSITIVOS
+------------------------------------------------------
+cd ~/CIS-Hardening-GNS3
+ls -lh hardening_router.py hardening_switch.py hardening_fortigate.py
+
+# Modo auditoria: consulta configuraciones y genera informes sin cambios.
+python3 hardening_router.py --audit
+python3 hardening_switch.py --audit
+python3 hardening_fortigate.py --audit
+
+# Modo aplicacion (SOLO con autorizacion, revision y respaldo previos):
+# python3 hardening_router.py --apply
+# python3 hardening_switch.py --apply
+# python3 hardening_fortigate.py --apply
+
+# ATENCION: en la practica el modo --apply de FortiGate fallo inicialmente
+# y requirio completar manualmente la politica de contrasenas. HTTPS en
+# port2 sigue sin funcionar y HTTP LAN no se ha deshabilitado.
+# No repetir --apply sobre la topologia ya endurecida solo para demostrarlo.
+
+6. PRUEBA DE CONECTIVIDAD SSH A LOS EQUIPOS
+-------------------------------------------
+# SSH al FortiGate (probado durante la practica):
+ssh admin@10.21.40.129
+
+# Conexion TCP basica al puerto 22, sin autenticacion:
+python3 - <<'PY'
+import socket
+for nombre, ip in [
+    ('Router R-CIS', '10.21.40.1'),
+    ('Switch SW-CIS', '10.21.40.130'),
+    ('FortiGate', '10.21.40.129'),
+]:
+    try:
+        with socket.create_connection((ip, 22), timeout=30):
+            print(f'{nombre}: TCP/22 accesible')
+    except OSError as error:
+        print(f'{nombre}: sin respuesta TCP/22 ({error})')
+PY
+
+# NOTA: el Cisco IOS 12.4 utiliza algoritmos SSH antiguos; para las
+# pruebas de automatizacion se utilizo Paramiko 3.5.1 en este entorno.
+
+7. INFORMES DE AUDITORIA GENERADOS
+----------------------------------
+cd ~/CIS-Hardening-GNS3
+ls -lh reportes/
+
+# Archivos documentados:
+# reportes/router_antes.json
+# reportes/router_pre_aplicacion.json
+# reportes/router_despues.json
+# reportes/switch_antes.json
+# reportes/switch_pre_aplicacion.json
+# reportes/switch_despues.json
+# reportes/fortigate_antes.json
+# reportes/fortigate_pre_aplicacion.json
+# reportes/fortigate_despues.json
+# Ademas se conservan copias 'antes_original.json'.
+
+# Resultados observados (controles seleccionados, NO CIS integral):
+# Router:    1/3 antes -> 3/3 despues
+# Switch:    0/3 antes -> 3/3 despues
+# FortiGate: 2/5 antes -> 4/5 despues
+
+8. VERIFICACION FINAL DEL SERVIDOR Y PROYECTO
+---------------------------------------------
+cat /etc/os-release
+sudo cat /etc/netplan/50-cloud-init.yaml
+ip -4 addr show ens3
+ip route
+python3 --version
+~/CIS-Hardening-GNS3/venv/bin/python -m pip show paramiko
+ls -la ~/CIS-Hardening-GNS3
+
+
