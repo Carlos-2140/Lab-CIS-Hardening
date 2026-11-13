@@ -195,6 +195,12 @@ Se restringieron los protocolos de administración remota en la WAN. En la LAN s
 
 > **Control pendiente:** deshabilitar HTTP en `port2` solo después de reparar y comprobar HTTPS. No se marca como cumplido ni se oculta esta excepción.
 
+**Evidencia de la configuración WAN — acceso administrativo limitado a PING:**
+
+![Configuración WAN port1 del FortiGate: PING como acceso administrativo](Evidencias/10_fortigate_wan_port1.png)
+
+*La captura demuestra la restricción del acceso administrativo de la interfaz externa. La interfaz LAN mantiene una excepción documentada para HTTP.*
+
 ### 5.2 Timeout y protocolo SSH
 
 El FortiGate presentó los siguientes valores:
@@ -227,6 +233,12 @@ end
 **Comprobación:** `show full-configuration system password-policy` y **System → Settings → Password Policy**.
 
 **Observación del proceso:** hubo que habilitar primero la política y corregir manualmente la secuencia de parámetros durante la práctica; no se afirma que la remediación completa se haya realizado automáticamente sin incidencias.
+
+**Evidencia de la política de contraseñas del FortiGate:**
+
+![Política de contraseñas para administradores en FortiGate](Evidencias/11_fortigate_politica_contrasenas.png)
+
+*Configuración de complejidad y longitud mínima para contraseñas administrativas.*
 
 ### 5.4 Ruta estática y política LAN-A-INTERNET
 
@@ -357,6 +369,18 @@ Esta ejecución demuestra que el script **no aplica cambios innecesarios** cuand
 
 **Verificación posterior:** `python3 hardening_switch.py --audit` confirmó nuevamente **3/3, 100 %**, sin alterar el switch.
 
+### Evidencias de los modos de automatización
+
+**Auditoría del switch sin cambios (`--audit`):**
+
+![Ejecución real del modo audit en el switch](Evidencias/07_switch_modo_audit.png)
+
+**Comprobación posterior con `--apply`:**
+
+![Ejecución real del modo apply en switch con controles ya cumplidos](Evidencias/08_switch_modo_apply.png)
+
+*El modo `--apply` muestra que no había cambios pendientes; no se presenta como una nueva remediación.*
+
 ### 6.5 Lectura de reportes almacenados
 
 Para visualizar los archivos históricos sin modificar los dispositivos:
@@ -383,6 +407,30 @@ python3 -m json.tool reportes/fortigate_despues.json
 | SW-CIS | **0/3 (0 %)** | **3/3 (100 %)** | +3 |
 | FortiGate | **2/5 (40 %)** | **4/5 (80 %)** | +2 |
 | **TOTAL** | **3/11 (27,3 %)** | **10/11 (90,9 %)** | **+7 controles** |
+
+### Capturas de las auditorías antes y después
+
+Las siguientes son **capturas auténticas de los JSON generados en el laboratorio** y permiten comparar visualmente cada resultado, sin abrir el PDF.
+
+**Router R-CIS — inicial 1/3; final 3/3**
+
+![Auditoría inicial del router R-CIS con 1 de 3 controles cumplidos](Evidencias/01_router_antes.png)
+
+![Auditoría final del router R-CIS con 3 de 3 controles cumplidos](Evidencias/02_router_despues.png)
+
+**Switch SW-CIS — inicial 0/3; final 3/3**
+
+![Auditoría inicial del switch SW-CIS con 0 de 3 controles cumplidos](Evidencias/03_switch_antes.png)
+
+![Auditoría final del switch SW-CIS con 3 de 3 controles cumplidos](Evidencias/04_switch_despues.png)
+
+**FortiGate — inicial 2/5; final 4/5**
+
+![Auditoría inicial de FortiGate con 2 de 5 controles cumplidos](Evidencias/05_fortigate_antes.png)
+
+![Auditoría final de FortiGate con 4 de 5 controles cumplidos](Evidencias/06_fortigate_despues.png)
+
+*El único control pendiente sigue siendo la deshabilitación de HTTP administrativo en la LAN del FortiGate.*
 
 ### 7.2 Resultado individual de controles
 
@@ -427,7 +475,13 @@ La conexión SSH al router confirma acceso funcional; el cumplimiento específic
 
 📷 **[Abrir configuración del FortiGate por interfaz gráfica (PDF)](Configuracion%20FortiGate%20GUI/Configuracion_FortiGate_GUI.pdf)**.
 
-> **Nota de presentación:** los procedimientos, resultados, comandos, explicaciones y conclusiones están **directamente en este README**, como indicó el profesor. Las capturas adicionales están consolidadas en los PDF, todavía no incrustadas individualmente en Markdown.
+> **Nota de presentación:** las **11 capturas principales** ahora se muestran directamente en este README junto a los procedimientos, comandos, resultados y conclusiones. Los PDF contienen material visual complementario.
+
+### Evidencia de administración SSH del router
+
+![Prueba de conexión SSH desde Ubuntu al router R-CIS](Evidencias/09_router_prueba_ssh.png)
+
+*La prueba muestra comunicación SSH con el router; los controles de versión SSH y configuración VTY se verifican con las auditorías y los comandos Cisco.*
 
 ### 7.4 Reportes de auditoría disponibles
 
