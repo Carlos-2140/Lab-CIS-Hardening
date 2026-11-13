@@ -1,0 +1,26 @@
+{
+    "dispositivo": "R-CIS",
+    "ip": "10.21.40.1",
+    "fecha_utc": "2026-11-13T04:43:09.143844+00:00",
+    "etapa": "AUDITORIA_SIN_CAMBIOS",
+    "controles_evaluados": 3,
+    "controles_cumplidos": 1,
+    "porcentaje_cumplimiento": 33.33,
+    "controles": {
+        "SSH_V2": {
+            "descripcion": "Utilizar exclusivamente SSH version 2",
+            "cumple": false,
+            "estado": "NO CUMPLE"
+        },
+        "HTTP_OFF": {
+            "descripcion": "Deshabilitar servidor HTTP",
+            "cumple": true,
+            "estado": "CUMPLE"
+        },
+        "TIMEOUT_VTY": {
+            "descripcion": "Tiempo de inactividad VTY de 5 minutos",
+            "cumple": false,
+            "estado": "NO CUMPLE"
+        }
+    }
+}
