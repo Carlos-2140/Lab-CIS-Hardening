@@ -1,137 +1,263 @@
-# Laboratorio CIS Hardening en GNS3
-### Auditoría y fortalecimiento de seguridad en Router Cisco, Switch Cisco y FortiGate
+# Laboratorio de auditoría y hardening CIS en GNS3
 
-> 🎥 **VIDEO DE DEMOSTRACIÓN — PENDIENTE DE PUBLICACIÓN**  
-> En esta primera sección se colocará el enlace real del video de YouTube (máximo **10 minutos**, con rostro, voz, fecha y hora según las instrucciones del profesor). No se ha inventado un enlace ni se afirma que el video esté publicado.
+**Práctica de Seguridad de Redes · GNS3 · Cisco IOS / IOSvL2 · FortiGate 7.0.9 · Ubuntu Server 24.04.5 · Python**
 
-**Laboratorio académico | GNS3 | Cisco IOS 12.4 / IOSvL2 15.2 | FortiOS 7.0.9 | Ubuntu Server 24.04 | Python y Paramiko**
+## 🎬 Video demostrativo
+
+▶️ **Video pendiente de publicación en YouTube.** En esta sección se colocará su enlace una vez grabada la demostración del laboratorio (máximo 10 minutos, con rostro, voz, fecha y hora, según el requisito del profesor).
 
 ---
 
-## Contenido
+## 1. Introducción y propósito
 
-1. [Introducción y alcance](#1-introducción-y-alcance)
-2. [Objetivos y metodología](#2-objetivos-y-metodología)
-3. [Topología de GNS3](#3-topología-de-gns3)
-4. [Direccionamiento y rutas](#4-direccionamiento-y-rutas)
-5. [Herramientas utilizadas](#5-herramientas-utilizadas)
-6. [Preparación de Ubuntu Server](#6-preparación-de-ubuntu-server)
-7. [Controles CIS seleccionados: Router R-CIS](#7-controles-cis-seleccionados-router-r-cis)
-8. [Controles CIS seleccionados: Switch SW-CIS](#8-controles-cis-seleccionados-switch-sw-cis)
-9. [Controles CIS seleccionados: FortiGate](#9-controles-cis-seleccionados-fortigate)
-10. [Cómo funcionan los scripts](#10-cómo-funcionan-los-scripts)
-11. [Resultados reales de auditoría](#11-resultados-reales-de-auditoría)
-12. [Pruebas de funcionamiento](#12-pruebas-de-funcionamiento)
-13. [Evidencias visuales y documentación de GUI](#13-evidencias-visuales-y-documentación-de-gui)
-14. [Configuraciones y archivos publicados](#14-configuraciones-y-archivos-publicados)
-15. [Hallazgos, limitaciones y recomendaciones](#15-hallazgos-limitaciones-y-recomendaciones)
-16. [Conclusiones](#16-conclusiones)
-17. [Referencias técnicas](#17-referencias-técnicas)
+Este laboratorio implementa una infraestructura virtual en **GNS3** para evaluar y fortalecer la seguridad de administración del **router Cisco R-CIS**, el **switch Cisco SW-CIS** y el **firewall FortiGate 7.0.9**. Un servidor Ubuntu utiliza **Python y Paramiko** para conectarse por SSH, verificar parámetros de configuración, registrar el estado de los dispositivos en archivos **JSON** y aplicar controles seleccionados de hardening.
 
-## 1. Introducción y alcance
+La práctica toma como referencia **principios de seguridad alineados con CIS Benchmarks**, tales como reducir servicios administrativos expuestos, usar SSHv2, limitar sesiones inactivas y establecer contraseñas robustas.
 
-Se implementó un laboratorio de redes en **GNS3** para auditar y fortalecer la administración de **tres equipos de infraestructura**: router Cisco **R-CIS**, switch Cisco **SW-CIS** y firewall **FortiGate 7.0.9**. La automatización se realizó desde Ubuntu mediante **Python 3.12 y Paramiko 3.5.1**, utilizando conexiones SSH y generando reportes JSON de cumplimiento.
+### Objetivos
 
-El trabajo se fundamenta en **principios de endurecimiento alineados con recomendaciones CIS**: reducir servicios administrativos innecesarios, exigir mecanismos de acceso seguros, limitar sesiones inactivas y fortalecer la autenticación. Cada resultado se documenta con el control inspeccionado, la configuración observada y el reporte real.
+1. Implementar una topología con NAT, router, firewall, switch, Ubuntu Server y Windows 10.
+2. Auditar **11 controles seleccionados**: tres del router, tres del switch y cinco del FortiGate.
+3. Ejecutar scripts en modo `--audit` sin modificar la configuración.
+4. Aplicar hardening con `--apply` cuando se requieran cambios y volver a verificar los controles.
+5. Comparar los resultados iniciales y finales, conservar reportes JSON y comprobar la administración SSH.
+6. Documentar los controles que no se pudieron completar sin afectar el acceso administrativo.
 
-> **Alcance exacto:** Se escogieron **11 controles**, tres para router, tres para switch y cinco para FortiGate. Los porcentajes de este repositorio describen **solo estos controles**. No constituyen una certificación CIS ni una auditoría completa de ningún benchmark. No se atribuyen identificadores CIS concretos que no hayan sido comprobados contra la edición exacta y compatible con el software del laboratorio.
+> **Alcance:** Los resultados representan únicamente estos 11 controles académicos, **no una certificación CIS ni el cumplimiento integral de un benchmark**. No se atribuyen números específicos de recomendación CIS sin comprobar su correspondencia con la edición y la versión del producto.
 
-## 2. Objetivos y metodología
+## 2. Topología de red
 
-### Objetivo general
+![Topología real del laboratorio CIS Hardening en GNS3](Topologia/Topologia.png)
 
-Auditar y reforzar los controles de acceso administrativo de la infraestructura GNS3, preservando la conectividad de los equipos, y demostrar objetivamente el estado de seguridad **antes y después**.
+![Diagrama complementario de la infraestructura](Topologia/Diagrama.png)
 
-### Objetivos específicos
+**Flujo:** NAT1 → Router R-CIS → FortiGate → Switch SW-CIS → Ubuntu Server y Windows 10 QEMU.
 
-- Construir la topología con router, firewall, switch, Ubuntu Server y Windows 10.
-- Identificar tres controles verificables en Cisco IOS y cinco controles en FortiOS.
-- Ejecutar auditoría **sin cambios** mediante `--audit`.
-- Evaluar y aplicar remediaciones mediante `--apply` cuando correspondiera.
-- Generar y comparar reportes JSON auténticos.
-- Verificar configuraciones mediante consola Cisco, CLI FortiGate y GUI FortiGate.
-- Documentar una **excepción no resuelta** en lugar de marcarla como corregida.
-- Consolidar los resultados y pruebas en un repositorio que pueda revisarse desde este README.
-
-### Fases realizadas
-
-| Fase | Actividad | Evidencia |
+| Dispositivo | Función | Dirección IPv4 |
 |---|---|---|
-| 1. Implementación | Configuración de topología, interfaces, ruta predeterminada y acceso SSH | [Topología](Topologia/) y [Direccionamiento](Direccionamiento/) |
-| 2. Auditoría inicial | Identificación de incumplimientos sin aplicar configuración | [JSON iniciales](Reportes/) |
-| 3. Hardening | Ajuste de controles seleccionados en Cisco y FortiGate | [Scripts](Scripts/) y [configuraciones](Configuraciones/) |
-| 4. Auditoría final | Comparación de controles cumplidos tras la intervención | [JSON finales](Reportes/) |
-| 5. Validación | Pruebas SSH, revisión HTTP, acceso GUI y conectividad | [Evidencias PDF](Evidencias/Evidencias_CIS_Hardening.pdf) |
-| 6. Documentación | Registro de procedimientos, resultados, excepción y referencias | Este README |
+| NAT1 | Red NAT de salida del laboratorio | `192.168.42.0/24` |
+| R-CIS, FastEthernet0/1 | WAN, dirección mediante DHCP | `192.168.42.214/24` (observada; puede variar) |
+| R-CIS, FastEthernet0/0 | Enlace hacia FortiGate | `10.21.40.1/30` |
+| FortiGate, port1 | WAN hacia R-CIS | `10.21.40.2/30` |
+| FortiGate, port2 | Gateway de la LAN | `10.21.40.129/25` |
+| SW-CIS, VLAN 1 | Administración del switch | `10.21.40.130/25` |
+| Ubuntu Server, ens3 | Automatización Python / SSH | `10.21.40.138/25` |
+| Windows 10 QEMU | Equipo de pruebas | `10.21.40.140/25` |
 
-**Precisión:** Algunos cambios de FortiGate, especialmente el orden de activación de la política de contraseñas, requirieron una corrección manual. Los reportes demuestran los **estados observados** y no prueban que todos los cambios se ejecutaran automáticamente sin incidencias.
+**Red de tránsito:** `10.21.40.0/30` · **Red LAN:** `10.21.40.128/25` · **Gateway LAN:** `10.21.40.129`.
 
-## 3. Topología de GNS3
+[Consultar documentación detallada del direccionamiento](Direccionamiento/README.md).
 
-### Diagrama lógico
+## 3. Configuración del router R-CIS
 
-![Diagrama del laboratorio CIS Hardening](Topologia/Diagrama.png)
+**Equipo:** Cisco 2691 · IOS 12.4(25d) · **IP de enlace:** `10.21.40.1`.
 
-### Captura de la topología real
+### 3.1 Interfaces, enrutamiento y NAT
 
-![Topología real en GNS3](Topologia/Topologia.png)
+El router recibe su IP WAN desde NAT1 por DHCP, mantiene la red de tránsito hacia FortiGate y utiliza NAT overload para permitir la salida de la LAN. La ruta estática garantiza el retorno del tráfico hacia la subred `10.21.40.128/25`.
 
-### Recorrido entre dispositivos
-
-```text
-                  NAT1 — Red NAT GNS3
-                          |
-                       nat0
-                          |
-                 Fa0/1 (DHCP WAN)
-                  ┌────────────┐
-                  │ R-CIS      │ Cisco 2691 / IOS 12.4
-                  └────────────┘
-                 Fa0/0 10.21.40.1/30
-                          |
-                 port1 10.21.40.2/30
-                ┌──────────────────┐
-                │ FortiGate 7.0.9  │
-                └──────────────────┘
-                 port2 10.21.40.129/25
-                          |
-                        Gi0/0
-                    ┌────────┐
-                    │ SW-CIS │ Cisco IOSvL2
-                    └────────┘
-                     /      \
-                 Gi0/2      Gi0/1
-                   /          \
-              Ubuntu Server   Windows 10 QEMU
-              .138/25         .140/25
+```cisco
+interface FastEthernet0/1
+ ip address dhcp
+ ip nat outside
+!
+interface FastEthernet0/0
+ ip address 10.21.40.1 255.255.255.252
+ ip nat inside
+!
+ip route 10.21.40.128 255.255.255.128 10.21.40.2
+ip nat inside source list 10 interface FastEthernet0/1 overload
 ```
 
-El servidor Ubuntu ejecuta los scripts contra el router, switch y firewall. El Windows 10 QEMU participa en las comprobaciones de acceso y funcionamiento. La topología utiliza **dos subredes internas**: tránsito router–firewall y LAN de usuarios/administración.
+**Comprobación:** `show ip interface brief`, `show ip route`, `show ip nat statistics`. La ACL utilizada para NAT puede consultarse en la configuración exportada.
 
-## 4. Direccionamiento y rutas
+### 3.2 SSH versión 2 y acceso VTY
 
-| Dispositivo | Interfaz | Dirección IP / máscara | Función |
-|---|---|---|---|
-| NAT1 | nat0 | Red `192.168.42.0/24` | NAT del entorno GNS3 |
-| Router R-CIS | Fa0/1 | DHCP; **192.168.42.214/24 observado** | WAN, NAT outside |
-| Router R-CIS | Fa0/0 | **10.21.40.1/30** | Enlace hacia FortiGate |
-| FortiGate | port1 | **10.21.40.2/30** | WAN hacia router |
-| FortiGate | port2 | **10.21.40.129/25** | Gateway LAN |
-| Switch SW-CIS | Vlan1 | **10.21.40.130/25** | Gestión del switch |
-| Ubuntu Server | ens3 | **10.21.40.138/25** | Automatización |
-| Windows 10 QEMU | Ethernet | **10.21.40.140/25** | Pruebas |
+El acceso remoto debe utilizar **SSHv2** y autenticación local, con las líneas VTY limitadas a SSH.
 
-**Red WAN NAT:** `192.168.42.0/24` (la IP del router se recibe por DHCP).  
-**Red de tránsito:** `10.21.40.0/30` (hosts .1–.2).  
-**Red LAN:** `10.21.40.128/25` (hosts .129–.254).
+```cisco
+ip ssh version 2
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 5 0
+```
 
-**Rutas relevantes:**
-- Router: ruta estática hacia `10.21.40.128/25` a través de `10.21.40.2`.
-- Router: NAT overload en `FastEthernet0/1` para la red interna definida en ACL 10.
-- FortiGate: ruta predeterminada `0.0.0.0/0` a través de `10.21.40.1`, por `port1`.
-- Ubuntu, switch y Windows: gateway `10.21.40.129`.
+**Riesgo mitigado:** uso de protocolos de administración antiguos y sesiones abiertas sin supervisión.
 
-**Configuración de la LAN en Ubuntu (`/etc/netplan/50-cloud-init.yaml`):**
+**Comprobación:** `show ip ssh` y `show running-config | section line vty`.
+
+### 3.3 Servidor HTTP deshabilitado
+
+```cisco
+no ip http server
+no ip http secure-server
+```
+
+**Comprobación ejecutada:**
+
+```cisco
+R-CIS#show running-config | include ip http
+```
+
+**Salida observada:**
+
+```text
+no ip http server
+no ip http secure-server
+```
+
+> En la auditoría inicial, HTTP **ya estaba deshabilitado**. Los controles que pasaron de «No cumple» a «Cumple» fueron SSH versión 2 y timeout VTY.
+
+**Resultado del router:** **1/3 (33,33 %) → 3/3 (100 %)**.
+
+[Ver running-config del router](Configuraciones/Show%20runnig-config%20R-CIS..txt) · [Script Python](Scripts/hardening_router.py.txt).
+
+## 4. Configuración del switch SW-CIS
+
+**Equipo:** Cisco IOSvL2 · IOS 15.2 · **IP de gestión:** `10.21.40.130/25`.
+
+### 4.1 Interfaz de administración
+
+```cisco
+interface Vlan1
+ ip address 10.21.40.130 255.255.255.128
+!
+ip default-gateway 10.21.40.129
+```
+
+El enlace con el FortiGate utiliza `Gi0/0`; el servidor Ubuntu está conectado a `Gi0/2` y Windows 10 a `Gi0/1`.
+
+### 4.2 SSHv2, HTTP y timeout VTY
+
+```cisco
+ip ssh version 2
+no ip http server
+ip http secure-server
+!
+line vty 0 4
+ login local
+ transport input ssh
+ exec-timeout 5 0
+```
+
+Los controles evitan la administración por HTTP sin cifrado, exigen SSH versión 2 y limitan la inactividad de una sesión VTY a cinco minutos.
+
+**Comandos de verificación:**
+
+```cisco
+show ip ssh
+show running-config | include ip http
+show running-config | section line vty
+show ip interface brief
+```
+
+La comprobación de HTTP devolvió:
+
+```text
+no ip http server
+ip http secure-server
+```
+
+Esto confirma que **HTTP está deshabilitado** y que HTTPS permanece configurado en el switch.
+
+**Resultado del switch:** **0/3 (0 %) → 3/3 (100 %)**.
+
+[Ver running-config del switch](Configuraciones/Show%20runnig-config%20SW-CIS..txt) · [Script Python](Scripts/hardening_switch.py.txt).
+
+## 5. Configuración del firewall FortiGate
+
+**Equipo:** FortiGate VM · FortiOS 7.0.9 · **WAN:** `10.21.40.2/30` · **LAN:** `10.21.40.129/25`.
+
+### 5.1 Interfaces WAN y LAN
+
+En **Network → Interfaces** se revisaron las interfaces y sus accesos administrativos.
+
+| Parámetro | port1 — WAN | port2 — LAN |
+|---|---|---|
+| Dirección | `10.21.40.2/30` | `10.21.40.129/25` |
+| Función | Hacia router R-CIS | Hacia switch SW-CIS |
+| Acceso administrativo final | `ping` | `ping https ssh http` |
+| Control CIS seleccionado | Restricción WAN: **cumple** | HTTP LAN: **pendiente** |
+
+**Configuración de referencia de la WAN:**
+
+```fortios
+config system interface
+    edit "port1"
+        set allowaccess ping
+    next
+end
+```
+
+Se restringieron los protocolos de administración remota en la WAN. En la LAN se conservó temporalmente HTTP porque el acceso por HTTPS presentaba un **fallo de negociación TLS**.
+
+> **Control pendiente:** deshabilitar HTTP en `port2` solo después de reparar y comprobar HTTPS. No se marca como cumplido ni se oculta esta excepción.
+
+### 5.2 Timeout y protocolo SSH
+
+El FortiGate presentó los siguientes valores:
+
+```fortios
+config system global
+    set admintimeout 5
+    set admin-ssh-v1 disable
+end
+```
+
+**Comprobación:** `get system global`, `show system global` y **System → Settings → Idle timeout**. Ambos controles **ya estaban cumplidos** durante la auditoría inicial.
+
+### 5.3 Política de contraseñas de administradores
+
+Se habilitó la política de contraseñas para la administración, con longitud mínima de **12 caracteres** y al menos una mayúscula, una minúscula, un número y un símbolo.
+
+```fortios
+config system password-policy
+    set status enable
+    set apply-to admin-password
+    set minimum-length 12
+    set min-upper-case-letter 1
+    set min-lower-case-letter 1
+    set min-number 1
+    set min-non-alphanumeric 1
+end
+```
+
+**Comprobación:** `show full-configuration system password-policy` y **System → Settings → Password Policy**.
+
+**Observación del proceso:** hubo que habilitar primero la política y corregir manualmente la secuencia de parámetros durante la práctica; no se afirma que la remediación completa se haya realizado automáticamente sin incidencias.
+
+### 5.4 Ruta estática y política LAN-A-INTERNET
+
+La ruta predeterminada permite la salida hacia R-CIS:
+
+| Destino | Gateway | Interfaz |
+|---|---|---|
+| `0.0.0.0/0` | `10.21.40.1` | `port1` |
+
+La política **LAN-A-INTERNET** habilita el flujo de `port2` a `port1`:
+
+| Parámetro | Configuración observada |
+|---|---|
+| Source / Destination | `all` / `all` |
+| Schedule | `always` |
+| Service | `ALL` |
+| Action | `ACCEPT` |
+| NAT | Deshabilitado (NAT lo realiza R-CIS) |
+| Log | Tráfico registrado |
+
+Estas configuraciones forman parte de la **conectividad**, no de los cinco controles seleccionados para la auditoría CIS.
+
+**Resultado del FortiGate:** **2/5 (40 %) → 4/5 (80 %)**.
+
+[Ver configuración exportada](Configuraciones/Configuracion%20Fortigate.txt) · [Capturas de GUI (PDF)](Configuracion%20FortiGate%20GUI/Configuracion_FortiGate_GUI.pdf) · [Script Python](Scripts/hardening_fortigate.py.txt).
+
+## 6. Ubuntu Server y automatización de auditorías
+
+### 6.1 Configuración de red estática
+
+Ubuntu utiliza la interfaz `ens3` con `10.21.40.138/25`. El archivo `/etc/netplan/50-cloud-init.yaml` quedó configurado así:
 
 ```yaml
 network:
@@ -150,42 +276,18 @@ network:
           - 1.1.1.1
 ```
 
-Más información en [Direccionamiento/README.md](Direccionamiento/README.md).
-
-## 5. Herramientas utilizadas
-
-| Herramienta | Versión / detalle | Propósito |
-|---|---|---|
-| GNS3 | Laboratorio virtual | Topología y conexión de dispositivos |
-| Cisco Router R-CIS | 2691 — IOS 12.4(25d) | Enrutamiento, NAT y hardening |
-| Cisco Switch SW-CIS | IOSvL2 — IOS 15.2 | Conmutación y gestión segura |
-| FortiGate | FortiOS 7.0.9 | Control de acceso y políticas |
-| Ubuntu Server | 24.04.5 LTS | Servidor de automatización |
-| Python | 3.12.3 | Scripts de auditoría |
-| Paramiko | 3.5.1 | Conexión SSH automatizada |
-| Windows 10 | QEMU dentro de GNS3 | Pruebas de conectividad y GUI |
-| GitHub | Repositorio público | Presentación y trazabilidad |
-
-## 6. Preparación de Ubuntu Server
-
-Se configuró la dirección estática `10.21.40.138/25` con Netplan y el acceso de salida a través del FortiGate. Desde Ubuntu se instaló el entorno para ejecutar los scripts.
-
-### Comprobación de red
+**Comprobación realizada:**
 
 ```bash
 ip -br addr show ens3
 ip route
 ```
 
-**Salida observada en el laboratorio:**
+**Resultado observado:** `ens3 UP 10.21.40.138/25` y ruta predeterminada vía `10.21.40.129`.
 
-```text
-ens3   UP   10.21.40.138/25
-default via 10.21.40.129 dev ens3 proto static
-10.21.40.128/25 dev ens3 proto kernel scope link src 10.21.40.138
-```
+### 6.2 Preparación del entorno Python
 
-### Entorno Python de la práctica
+Se utilizó **Ubuntu Server 24.04.5 LTS**, **Python 3.12.3** y **Paramiko 3.5.1**.
 
 ```bash
 cd ~/CIS-Hardening-GNS3
@@ -194,231 +296,21 @@ python3 --version
 python3 -m pip show paramiko
 ```
 
-El laboratorio utilizó **Python 3.12.3** y **Paramiko 3.5.1** para establecer sesiones SSH con los dispositivos Cisco de versiones anteriores.
+Los archivos originales ejecutados en Ubuntu tienen extensión `.py`. Las copias del repositorio se publicaron como `.py.txt`; **no deben ejecutarse directamente** sin restaurar y revisar el código, incluida cualquier línea de título añadida a los textos.
 
-### Comprobación de los reportes guardados
+[Ver registro de configuración de Ubuntu](Scripts/scripts-servidor-ubuntu-cis-hardening.txt).
 
-```bash
-cd ~/CIS-Hardening-GNS3
-ls -lh reportes/
-python3 -m json.tool reportes/router_antes.json
-python3 -m json.tool reportes/router_despues.json
-```
+### 6.3 Scripts de auditoría y aplicación
 
-Estos comandos **leen reportes existentes**; mostrar un JSON no ejecuta una auditoría nueva. Los archivos anteriores y posteriores se han conservado en [Reportes](Reportes/). El detalle de preparación de Ubuntu se encuentra además en [scripts-servidor-ubuntu-cis-hardening.txt](Scripts/scripts-servidor-ubuntu-cis-hardening.txt).
-
-## 7. Controles CIS seleccionados: Router R-CIS
-
-**Equipo:** Cisco 2691 — IOS 12.4(25d) — IP de gestión/transición `10.21.40.1`.
-
-### R1. Exigir SSH versión 2
-
-- **Riesgo mitigado:** uso de protocolos inseguros u obsoletos para administración.
-- **Estado inicial:** NO CUMPLE.
-- **Configuración final:** `ip ssh version 2`, autenticación local y VTY restringidas a SSH.
-- **Prueba:** `show ip ssh` y revisión de VTY.
-- **Resultado final:** CUMPLE.
-
-```cisco
-conf t
-ip ssh version 2
-line vty 0 4
- login local
- transport input ssh
-end
-```
-
-### R2. Deshabilitar servidor HTTP
-
-- **Riesgo mitigado:** interfaz administrativa HTTP sin protección TLS.
-- **Estado inicial:** **CUMPLE** (el equipo ya tenía el servidor HTTP deshabilitado).
-- **Configuración final:** `no ip http server` y `no ip http secure-server`.
-- **Resultado final:** CUMPLE.
-
-```cisco
-show running-config | include ip http
-```
-
-**Salida final registrada:**
-
-```text
-no ip http server
-no ip http secure-server
-```
-
-### R3. Timeout de inactividad en líneas VTY
-
-- **Riesgo mitigado:** sesiones administrativas abiertas sin supervisión.
-- **Estado inicial:** NO CUMPLE.
-- **Configuración final:** `exec-timeout 5 0`.
-- **Resultado final:** CUMPLE.
-
-```cisco
-conf t
-line vty 0 4
- exec-timeout 5 0
- login local
- transport input ssh
-end
-show running-config | section line vty
-```
-
-**Resultado conjunto:** **1/3 → 3/3**.
-
-**Evidencias:** [antes](Reportes/router_antes.json), [después](Reportes/router_despues.json), [running-config](Configuraciones/Show%20runnig-config%20R-CIS..txt), [script Python](Scripts/hardening_router.py.txt) e [informe visual](Evidencias/Evidencias_CIS_Hardening.pdf).
-
-## 8. Controles CIS seleccionados: Switch SW-CIS
-
-**Equipo:** Cisco IOSvL2 — IOS 15.2 — administración en `Vlan1: 10.21.40.130/25`.
-
-### S1. Exigir SSH versión 2
-
-- **Riesgo:** compatibilidad con versiones antiguas de acceso remoto.
-- **Inicial:** NO CUMPLE.
-- **Final:** `ip ssh version 2`, `login local` y `transport input ssh` en VTY — CUMPLE.
-
-### S2. Deshabilitar servidor HTTP
-
-- **Riesgo:** exposición de un servicio administrativo sin cifrar.
-- **Inicial:** NO CUMPLE.
-- **Final:** `no ip http server` — CUMPLE.
-- **Precisión:** el switch mantiene `ip http secure-server`. El objetivo era retirar HTTP, no HTTPS.
-
-**Salida observada:**
-
-```text
-no ip http server
-ip http secure-server
-```
-
-### S3. Establecer timeout VTY
-
-- **Riesgo:** reutilización de sesiones sin supervisión.
-- **Inicial:** NO CUMPLE.
-- **Final:** `exec-timeout 5 0` — CUMPLE.
-
-**Fragmento de la configuración final:**
-
-```cisco
-ip ssh version 2
-no ip http server
-ip http secure-server
-!
-line vty 0 4
- exec-timeout 5 0
- login local
- transport input ssh
-```
-
-**Comandos de verificación:**
-
-```cisco
-show ip ssh
-show running-config | include ip http
-show running-config | section line vty
-show ip interface brief
-```
-
-**Resultado conjunto:** **0/3 → 3/3**.
-
-**Evidencias:** [antes](Reportes/switch_antes.json), [después](Reportes/switch_despues.json), [running-config](Configuraciones/Show%20runnig-config%20SW-CIS..txt), [script Python](Scripts/hardening_switch.py.txt) e [informe visual](Evidencias/Evidencias_CIS_Hardening.pdf).
-
-## 9. Controles CIS seleccionados: FortiGate
-
-**Equipo:** FortiGate VM — FortiOS 7.0.9. WAN `port1: 10.21.40.2/30`; LAN `port2: 10.21.40.129/25`.
-
-### F1. Restringir servicios administrativos en WAN
-
-- **Riesgo:** exponer administración HTTP/HTTPS/SSH en el lado externo.
-- **Estado inicial:** `ping https ssh http` — NO CUMPLE.
-- **Estado final:** solamente `ping` — CUMPLE.
-- **GUI:** **Network → Interfaces → port1 → Edit**. Dirección `10.21.40.2/255.255.255.252`; en **Administrative Access** únicamente PING.
-- **CLI de referencia:**
-
-```fortios
-config system interface
-    edit "port1"
-        set allowaccess ping
-    next
-end
-```
-
-### F2. Eliminar HTTP administrativo de la LAN (**pendiente**)
-
-- **Riesgo:** el navegador transmite la administración HTTP sin TLS.
-- **Situación observada:** port2 mantiene `ping https ssh http`.
-- **Motivo:** se observó fallo de negociación TLS/HTTPS. Deshabilitar HTTP sin un acceso HTTPS funcional podía dejar inaccesible la GUI.
-- **Resultado:** NO CUMPLE inicialmente y NO CUMPLE al final.
-- **Plan:** corregir HTTPS y comprobar acceso; entonces retirar `http` de `allowaccess` y repetir la auditoría.
-
-**No se ejecutará aquí una orden de deshabilitar HTTP**, porque el control está documentado como pendiente y la recuperación de HTTPS debe verificarse antes.
-
-### F3. Timeout administrativo de cinco minutos
-
-- **Riesgo:** sesiones administrativas abandonadas.
-- **Estado inicial y final:** `admintimeout 5` — CUMPLE.
-- **GUI:** **System → Settings → Idle timeout: 5**.
-- **CLI de comprobación:** `get system global` o `show system global`.
-
-### F4. Deshabilitar SSH versión 1
-
-- **Riesgo:** permitir protocolos criptográficamente obsoletos.
-- **Estado inicial y final:** `admin-ssh-v1 disable` — CUMPLE.
-- **Comprobación:** consultar el valor global con la CLI de FortiGate.
-
-### F5. Política de contraseñas de administración
-
-- **Riesgo:** contraseñas débiles y susceptibles a adivinación.
-- **Estado inicial:** deshabilitada — NO CUMPLE.
-- **Estado final:** aplicada a `admin-password`, mínimo **12 caracteres**, al menos **1 mayúscula, 1 minúscula, 1 número y 1 símbolo** — CUMPLE.
-- **GUI:** **System → Settings → Password Policy**; alcance **Admin**; requisitos de complejidad habilitados.
-
-**Fragmento final de referencia:**
-
-```fortios
-config system password-policy
-    set status enable
-    set apply-to admin-password
-    set minimum-length 12
-    set min-upper-case-letter 1
-    set min-lower-case-letter 1
-    set min-number 1
-    set min-non-alphanumeric 1
-end
-```
-
-Durante la práctica fue necesario **habilitar primero la política** antes de asignar el alcance y sus parámetros; no se afirma que esa remediación fuera completamente automática.
-
-**Otros parámetros documentados, fuera de los 5 controles evaluados:** la GUI mostró reutilización de contraseñas habilitada y expiración desactivada. No se cuentan en el resultado de 4/5.
-
-### Ruta y política de salida
-
-La **ruta predeterminada** fue `0.0.0.0/0` hacia `10.21.40.1` por `port1`.
-
-La regla **LAN-A-INTERNET** usa origen `port2`, destino `port1`, origen y destino `all`, servicio `ALL`, horario `always`, acción `ACCEPT`, **NAT deshabilitado** y registro de tráfico habilitado. La traducción NAT se realiza en el router R-CIS. Esta regla pertenece a la conectividad del laboratorio; **no se contó como control de hardening de los cinco evaluados**.
-
-**Resultado conjunto FortiGate:** **2/5 → 4/5**.
-
-**Evidencias:** [antes](Reportes/fortigate_antes.json), [después](Reportes/fortigate_despues.json), [medición intermedia 3/5](Reportes/fortigate_antes_original.json), [configuración FortiGate](Configuraciones/Configuracion%20Fortigate.txt), [script](Scripts/hardening_fortigate.py.txt), [PDF de GUI](Configuracion%20FortiGate%20GUI/Configuracion_FortiGate_GUI.pdf).
-
-## 10. Cómo funcionan los scripts
-
-Los scripts se desarrollaron para conectarse a los dispositivos por SSH y evaluar únicamente los controles especificados.
-
-### Modo `--audit`: solo lectura
+**Modo `--audit`:** revisa controles y genera un reporte JSON sin realizar cambios de configuración.
 
 ```bash
-cd ~/CIS-Hardening-GNS3
-source venv/bin/activate
-
 python3 hardening_router.py --audit
 python3 hardening_switch.py --audit
 python3 hardening_fortigate.py --audit
 ```
 
-**Funcionamiento:** solicitar contraseña SSH, conectar, consultar parámetros, evaluar cada condición y generar un reporte JSON. No pretende cambiar el estado de los dispositivos.
-
-### Modo `--apply`: remediación condicionada y comprobación
+**Modo `--apply`:** comprueba los controles, intenta aplicar remediaciones necesarias y vuelve a evaluar el dispositivo.
 
 ```bash
 python3 hardening_router.py --apply
@@ -426,23 +318,29 @@ python3 hardening_switch.py --apply
 python3 hardening_fortigate.py --apply
 ```
 
-**Funcionamiento previsto:** inspeccionar la configuración, identificar controles no cumplidos, intentar ajustes aplicables y ejecutar una evaluación posterior.
+Los comandos corresponden a los scripts originales ejecutados en Ubuntu. **No es necesario ni recomendable volver a ejecutar `--apply` para preparar la documentación**, ya que puede modificar la configuración y sobrescribir reportes locales.
 
-**Advertencia:** `--apply` puede modificar la configuración real del dispositivo. No repetirlo sin revisar el código, comprobar acceso por consola y tener un respaldo. En FortiGate se documentó una incidencia de secuencia de comandos que exigió intervención manual.
+### 6.4 Ejecución real de `--apply` en el switch
 
-### Ejemplo auténtico de mantenimiento del switch
+En una comprobación posterior al hardening se ejecutó:
 
-En una **ejecución posterior al hardening**, el usuario ejecutó `python3 hardening_switch.py --apply`:
+```bash
+python3 hardening_switch.py --apply
+```
+
+**Salida observada:**
 
 ```text
 Conectando a SW-CIS...
 Conexion SSH establecida.
+
 === ESTADO INICIAL ===
 SSH_V2: CUMPLE
 HTTP_OFF: CUMPLE
 TIMEOUT_VTY: CUMPLE
 Controles cumplidos: 3/3
 Cumplimiento seleccionado: 100.0%
+
 No hay cambios pendientes.
 
 === ESTADO POSTERIOR ===
@@ -451,208 +349,133 @@ HTTP_OFF: CUMPLE
 TIMEOUT_VTY: CUMPLE
 Controles cumplidos: 3/3
 Cumplimiento seleccionado: 100.0%
+
 Todos los controles seleccionados cumplen.
 ```
 
-Esto **demuestra una ejecución real y el comportamiento sin cambios pendientes**, pero **no debe confundirse con una captura de la aplicación inicial de remediaciones**.
+Esta ejecución demuestra que el script **no aplica cambios innecesarios** cuando encuentra todos los controles cumplidos. No demuestra que haya remediado un incumplimiento durante esa ejecución.
 
-Después, `python3 hardening_switch.py --audit` volvió a confirmar **3/3** sin modificar el switch.
+**Verificación posterior:** `python3 hardening_switch.py --audit` confirmó nuevamente **3/3, 100 %**, sin alterar el switch.
 
-### Publicación de scripts
+### 6.5 Lectura de reportes almacenados
 
-Los archivos disponibles en GitHub son copias documentales `.py.txt`; los originales ejecutados en Ubuntu eran archivos `.py`. Algunos textos subidos comienzan con una línea de título que deberá retirarse antes de ejecutar el código como Python. También debe revisarse la lógica de reintentos SSH y tratamiento de errores para distribuir los scripts como ejecutables independientes.
+Para visualizar los archivos históricos sin modificar los dispositivos:
 
-**Código:** [router](Scripts/hardening_router.py.txt) · [switch](Scripts/hardening_switch.py.txt) · [FortiGate](Scripts/hardening_fortigate.py.txt) · [comandos Ubuntu](Scripts/scripts-servidor-ubuntu-cis-hardening.txt).
+```bash
+cd ~/CIS-Hardening-GNS3
+python3 -m json.tool reportes/router_antes.json
+python3 -m json.tool reportes/router_despues.json
+python3 -m json.tool reportes/switch_antes.json
+python3 -m json.tool reportes/switch_despues.json
+python3 -m json.tool reportes/fortigate_antes.json
+python3 -m json.tool reportes/fortigate_despues.json
+```
 
-## 11. Resultados reales de auditoría
+> Ejecutar nuevamente una auditoría puede **sobrescribir reportes locales**, incluido el archivo `*_antes.json`. Los JSON de esta publicación preservan la medición histórica inicial para realizar la comparación.
 
-### Resumen consolidado
+## 7. Resultados y evidencias de funcionamiento
 
-| Dispositivo | Antes | Después | Mejora |
+### 7.1 Comparación de cumplimiento
+
+| Equipo | Auditoría inicial | Auditoría final | Cambio |
 |---|---:|---:|---:|
-| Router R-CIS | **1/3 (33,33 %)** | **3/3 (100 %)** | +2 controles |
-| Switch SW-CIS | **0/3 (0 %)** | **3/3 (100 %)** | +3 controles |
-| FortiGate | **2/5 (40 %)** | **4/5 (80 %)** | +2 controles |
+| R-CIS | **1/3 (33,33 %)** | **3/3 (100 %)** | +2 |
+| SW-CIS | **0/3 (0 %)** | **3/3 (100 %)** | +3 |
+| FortiGate | **2/5 (40 %)** | **4/5 (80 %)** | +2 |
 | **TOTAL** | **3/11 (27,3 %)** | **10/11 (90,9 %)** | **+7 controles** |
 
-### Resultado por control
+### 7.2 Resultado individual de controles
 
-| Equipo / control | Antes | Después |
+| Control evaluado | Antes | Después |
 |---|---|---|
-| Router — SSHv2 | No cumple | Cumple |
-| Router — HTTP deshabilitado | Cumple | Cumple |
-| Router — Timeout VTY | No cumple | Cumple |
-| Switch — SSHv2 | No cumple | Cumple |
-| Switch — HTTP deshabilitado | No cumple | Cumple |
-| Switch — Timeout VTY | No cumple | Cumple |
-| FortiGate — Acceso WAN restringido | No cumple | Cumple |
-| FortiGate — HTTP LAN deshabilitado | **No cumple** | **No cumple** |
-| FortiGate — Timeout admin | Cumple | Cumple |
+| Router — SSH versión 2 | No cumple | Cumple |
+| Router — servidor HTTP deshabilitado | Cumple | Cumple |
+| Router — timeout VTY cinco minutos | No cumple | Cumple |
+| Switch — SSH versión 2 | No cumple | Cumple |
+| Switch — servidor HTTP deshabilitado | No cumple | Cumple |
+| Switch — timeout VTY cinco minutos | No cumple | Cumple |
+| FortiGate — restringir administración WAN | No cumple | Cumple |
+| FortiGate — deshabilitar HTTP en LAN | **No cumple** | **No cumple** |
+| FortiGate — timeout administrativo | Cumple | Cumple |
 | FortiGate — SSHv1 deshabilitado | Cumple | Cumple |
-| FortiGate — Política de contraseñas | No cumple | Cumple |
+| FortiGate — política de contraseñas | No cumple | Cumple |
 
-### Reportes JSON originales
+### 7.3 Pruebas y evidencias
 
-| Dispositivo | Antes | Después |
+| Prueba | Comando / pantalla | Resultado registrado |
 |---|---|---|
-| R-CIS | [router_antes.json](Reportes/router_antes.json) | [router_despues.json](Reportes/router_despues.json) |
-| SW-CIS | [switch_antes.json](Reportes/switch_antes.json) | [switch_despues.json](Reportes/switch_despues.json) |
+| Auditoría inicial router | `router_antes.json` | 1/3 |
+| Auditoría final router | `router_despues.json` | 3/3 |
+| Auditoría inicial switch | `switch_antes.json` | 0/3 |
+| Auditoría final switch | `switch_despues.json` | 3/3 |
+| Auditoría inicial FortiGate | `fortigate_antes.json` | 2/5 |
+| Auditoría final FortiGate | `fortigate_despues.json` | 4/5; HTTP LAN pendiente |
+| Conexión SSH al router | `python3 test_ssh_router.py` | Conexión exitosa; respuesta de Cisco 2691 R-CIS |
+| Auditoría en vivo del switch | `hardening_switch.py --audit` | SSH exitosa, 3/3; sin cambios |
+| Aplicación sin cambios pendientes | `hardening_switch.py --apply` | 3/3 antes y después |
+| HTTP en router | `show running-config \| include ip http` | `no ip http server` |
+| HTTP en switch | `show running-config \| include ip http` | `no ip http server` |
+| WAN FortiGate | Network → Interfaces → port1 | Solo PING |
+| LAN FortiGate | Network → Interfaces → port2 | HTTP conservado por fallo de HTTPS |
+| Contraseñas FortiGate | System → Settings → Password Policy | Admin; 12 caracteres y complejidad |
+| Ruta FortiGate | Network → Static Routes | Default `0.0.0.0/0` vía `10.21.40.1` |
+| Política FortiGate | Policy & Objects → Firewall Policy | LAN-A-INTERNET, ACCEPT |
+
+La conexión SSH al router confirma acceso funcional; el cumplimiento específico de SSHv2 se sustenta también en los reportes y running-config. Las salidas de `show running-config` confirman el estado configurado de HTTP, pero **no son por sí solas una prueba TCP independiente de los puertos**.
+
+📷 **[Abrir informe consolidado de evidencias con capturas auténticas (PDF)](Evidencias/Evidencias_CIS_Hardening.pdf)**.
+
+📷 **[Abrir configuración del FortiGate por interfaz gráfica (PDF)](Configuracion%20FortiGate%20GUI/Configuracion_FortiGate_GUI.pdf)**.
+
+> **Nota de presentación:** los procedimientos, resultados, comandos, explicaciones y conclusiones están **directamente en este README**, como indicó el profesor. Las capturas adicionales están consolidadas en los PDF, todavía no incrustadas individualmente en Markdown.
+
+### 7.4 Reportes de auditoría disponibles
+
+| Dispositivo | Inicial | Final |
+|---|---|---|
+| Router | [router_antes.json](Reportes/router_antes.json) | [router_despues.json](Reportes/router_despues.json) |
+| Switch | [switch_antes.json](Reportes/switch_antes.json) | [switch_despues.json](Reportes/switch_despues.json) |
 | FortiGate | [fortigate_antes.json](Reportes/fortigate_antes.json) | [fortigate_despues.json](Reportes/fortigate_despues.json) |
 
-La medición [fortigate_antes_original.json](Reportes/fortigate_antes_original.json) es **intermedia (3/5)** y no sustituye ni al estado inicial oficial de 2/5 ni al final de 4/5.
+También se conserva un [reporte intermedio del FortiGate (3/5)](Reportes/fortigate_antes_original.json). **No sustituye al resultado inicial de 2/5.**
 
-**Importante:** Los archivos locales de Ubuntu con sufijo `_antes.json` pueden sobrescribirse al ejecutar otra auditoría. Los JSON históricos publicados aquí representan la **medición inicial guardada en GitHub**.
+## 8. Conclusiones
 
-## 12. Pruebas de funcionamiento
+La práctica alcanzó un aumento de cumplimiento de **3/11 a 10/11 controles**, equivalente a **27,3 % → 90,9 %** del conjunto seleccionado. Router y switch finalizaron cumpliendo los tres controles de cada uno. FortiGate cumplió cuatro de cinco, con una excepción técnica documentada.
 
-### 12.1 SSH hacia el router
+Los scripts y sus reportes permitieron comparar resultados antes y después, mantener evidencia verificable y confirmar mediante SSH que los dispositivos continuaban accesibles. El control HTTP del FortiGate no se forzó hasta asegurar HTTPS, priorizando la recuperación del acceso administrativo frente a una remediación que pudiera causar bloqueo.
 
-Se ejecutó desde Ubuntu:
+**Conclusión principal:** la auditoría y el hardening deben combinar configuración segura, comprobación posterior y documentación honesta de los controles pendientes.
 
-```bash
-python3 test_ssh_router.py
-```
+## 9. Seguridad y alcance
 
-**Resultado observado:** conexión SSH establecida; el dispositivo respondió con datos de **R-CIS, Cisco 2691, IOS 12.4(25d)**. Aunque el script mostraba un texto de «switch Cisco», la respuesta confirmó que se trataba del router R-CIS.
+- Los **11 controles** representan una selección académica, no una evaluación integral ni certificación CIS.
+- El FortiGate mantiene HTTP administrativo en `port2`; el control sigue pendiente mientras se investiga HTTPS/TLS.
+- El modo `--apply` puede efectuar cambios reales; debe utilizarse con acceso autorizado y posibilidad de recuperación por consola.
+- Las copias `.py.txt` son documentación del código. Antes de reproducirlo, deben revisarse los scripts como archivos Python válidos y sus dependencias.
+- Una exportación completa de FortiGate puede incluir valores `ENC`, hashes y secretos. **La exportación pública del laboratorio debe depurarse y deben protegerse las credenciales expuestas**, incluso si sus valores aparecen cifrados.
+- Se recomienda revisar configuración de administradores, NTP, registros centralizados, restricciones de origen, MFA y otras recomendaciones aplicables para una siguiente versión del laboratorio.
 
-Esta prueba acredita una **sesión SSH funcional**, mientras que la exigencia específica de SSH versión 2 se sustenta además en la configuración y la auditoría.
+**Documentación técnica de controles:** [Recomendaciones CIS](Documentacion/Recomendaciones_CIS.md).
 
-### 12.2 Auditoría SSH del switch
+## 10. Archivos complementarios
 
-```bash
-python3 hardening_switch.py --audit
-```
+| Recurso | Enlace |
+|---|---|
+| Topología GNS3 | [Captura](Topologia/Topologia.png) · [Diagrama](Topologia/Diagrama.png) |
+| Direccionamiento IP | [README de direccionamiento](Direccionamiento/README.md) |
+| Script del router | [hardening_router.py.txt](Scripts/hardening_router.py.txt) |
+| Script del switch | [hardening_switch.py.txt](Scripts/hardening_switch.py.txt) |
+| Script del FortiGate | [hardening_fortigate.py.txt](Scripts/hardening_fortigate.py.txt) |
+| Preparación Ubuntu | [Registro de comandos](Scripts/scripts-servidor-ubuntu-cis-hardening.txt) |
+| Running-config R-CIS | [Archivo](Configuraciones/Show%20runnig-config%20R-CIS..txt) |
+| Running-config SW-CIS | [Archivo](Configuraciones/Show%20runnig-config%20SW-CIS..txt) |
+| Exportación FortiGate | [Archivo](Configuraciones/Configuracion%20Fortigate.txt) |
+| Reportes | [JSON antes/después](Reportes/) |
+| Documentación CIS | [Recomendaciones CIS](Documentacion/Recomendaciones_CIS.md) |
+| GUI del FortiGate | [PDF con capturas](Configuracion%20FortiGate%20GUI/Configuracion_FortiGate_GUI.pdf) |
+| Evidencias | [PDF con capturas auténticas](Evidencias/Evidencias_CIS_Hardening.pdf) |
 
-**Resultado real:** conexión SSH establecida, tres controles **CUMPLE**, **3/3** y mensaje de finalización **sin modificar el switch**.
+**Herramientas:** GNS3 · Cisco 2691 / IOS 12.4 · Cisco IOSvL2 15.2 · FortiOS 7.0.9 · Ubuntu Server 24.04.5 · Python 3.12.3 · Paramiko 3.5.1 · Windows 10 QEMU.
 
-### 12.3 HTTP en router y switch
-
-Consultas ejecutadas desde la consola Cisco:
-
-```cisco
-R-CIS#show running-config | include ip http
-```
-
-```text
-no ip http server
-no ip http secure-server
-```
-
-```cisco
-SW-CIS#show running-config | include ip http
-```
-
-```text
-no ip http server
-ip http secure-server
-```
-
-Estas pruebas **verifican la configuración administrativa** observada. No se presentan como una prueba independiente de conexión a TCP/80 o TCP/443.
-
-### 12.4 Configuración GUI del FortiGate
-
-Se obtuvieron capturas auténticas de:
-
-1. **WAN port1:** `10.21.40.2/30` y acceso administrativo **PING** únicamente.
-2. **LAN port2:** `10.21.40.129/25` y acceso administrativo `PING/HTTPS/SSH/HTTP`.
-3. **System Settings:** timeout administrativo de **5 minutos**.
-4. **Password Policy:** alcance **Admin**, mínimo **12**, requisitos de mayúscula/minúscula/número/símbolo.
-5. **Static Routes:** ruta `0.0.0.0/0` hacia `10.21.40.1`.
-6. **Firewall Policy:** regla `LAN-A-INTERNET` con acción `ACCEPT` y registro de tráfico.
-
-Se verificó la preservación de las configuraciones de conectividad de la LAN mientras se aplicaban los controles seleccionados. La falla de HTTPS administrativo se documentó y **no se ocultó**.
-
-## 13. Evidencias visuales y documentación de GUI
-
-### Informes de capturas auténticas
-
-**[Abrir todas las evidencias visuales del laboratorio (PDF)](Evidencias/Evidencias_CIS_Hardening.pdf)**
-
-**[Abrir configuración gráfica del FortiGate (PDF)](Configuracion%20FortiGate%20GUI/Configuracion_FortiGate_GUI.pdf)**
-
-**Relación de lo demostrado visualmente:**
-
-| Grupo | Evidencia auténtica | Resultado |
-|---|---|---|
-| Topología | GNS3 real con NAT, router, FortiGate, switch y hosts | Topología implementada |
-| Auditoría inicial del router | JSON `router_antes.json` abierto en Ubuntu | 1/3 |
-| Auditoría final del router | JSON `router_despues.json` abierto en Ubuntu | 3/3 |
-| Auditoría inicial del switch | JSON `switch_antes.json` abierto en Ubuntu | 0/3 |
-| Auditoría final del switch | JSON `switch_despues.json` abierto en Ubuntu | 3/3 |
-| Auditoría inicial del FortiGate | JSON `fortigate_antes.json` abierto en Ubuntu | 2/5 |
-| Auditoría final del FortiGate | JSON `fortigate_despues.json` abierto en Ubuntu | 4/5 |
-| Control router | Verificación `no ip http server` | Cumple |
-| Control switch | Verificación `no ip http server` | Cumple |
-| FortiGate GUI | WAN, LAN, política de contraseñas, timeout, ruta y política de tráfico | 4/5 controles auditados |
-| SSH | Sesión desde Ubuntu al router | Conexión exitosa |
-| Script `--audit` | Consulta al switch posterior al hardening | 3/3 sin cambios |
-| Script `--apply` | Ejecución con controles previamente cumplidos | 3/3; sin cambios pendientes |
-
-**Nota sobre las imágenes:** Este README muestra directamente las dos imágenes de topología ya publicadas. Las demás **capturas originales están reunidas en los PDF del repositorio** y no se presentan como imágenes independientes inexistentes. El texto y resultados esenciales de esas evidencias están reproducidos aquí para que la revisión de la metodología y conclusiones no dependa de descargar los PDF.
-
-### Cómo leer correctamente las evidencias
-
-- Las auditorías «antes» proceden de los **reportes históricos**.
-- Las comprobaciones posteriores se hicieron sobre equipos **ya configurados**.
-- La captura `--apply` del switch demuestra que el script detecta **«No hay cambios pendientes»**; no prueba que ese día remediara un incumplimiento.
-- La captura del FortiGate final muestra explícitamente que **HTTP en la LAN sigue pendiente**.
-
-## 14. Configuraciones y archivos publicados
-
-| Recurso | Contenido | Enlace |
-|---|---|---|
-| Router final | Running-config con SSH, VTY, HTTP, NAT y rutas | [R-CIS](Configuraciones/Show%20runnig-config%20R-CIS..txt) |
-| Switch final | Running-config de gestión, SSH, HTTP y VTY | [SW-CIS](Configuraciones/Show%20runnig-config%20SW-CIS..txt) |
-| FortiGate | Configuración general de FortiOS 7.0.9 | [FortiGate](Configuraciones/Configuracion%20Fortigate.txt) |
-| Scripts | Código Python documental para los tres dispositivos | [Scripts](Scripts/) |
-| JSON | Reportes iniciales, finales e intermedio relevante | [Reportes](Reportes/) |
-| Recomendaciones | Justificación de cada control y alcance | [Recomendaciones CIS](Documentacion/Recomendaciones_CIS.md) |
-| Evidencias visuales | Documento PDF de capturas y pruebas | [Evidencias](Evidencias/Evidencias_CIS_Hardening.pdf) |
-| GUI FortiGate | Capturas y descripciones de GUI | [Documento GUI](Configuracion%20FortiGate%20GUI/Configuracion_FortiGate_GUI.pdf) |
-| Direccionamiento | Tabla y esquema de subredes | [Direccionamiento](Direccionamiento/) |
-| Topología | Diagrama y captura GNS3 | [Topologia](Topologia/) |
-
-**Seguridad de la información:** Las exportaciones completas de FortiGate pueden contener cadenas `ENC` con material sensible. El archivo histórico que se publicó requiere depuración de esos valores y revisión del historial de Git, idealmente con rotación de credenciales afectadas. El hecho de estar cifrados **no convierte esos datos en adecuados para un repositorio público**.
-
-## 15. Hallazgos, limitaciones y recomendaciones
-
-### Hallazgos comprobados
-
-- Router y switch finalizaron con todos sus controles seleccionados cumplidos.
-- FortiGate completó cuatro de cinco controles; la restricción de administración WAN y la política de contraseñas mejoraron.
-- Los controles de timeout y SSHv1 del FortiGate **ya cumplían** al inicio.
-- El acceso administrativo mediante SSH funcionó después del hardening.
-- Las auditorías posteriores y la nueva ejecución de `--apply` del switch confirmaron el estado **3/3 sin cambios pendientes**.
-
-### Limitación técnica principal
-
-**El FortiGate no pudo completar el control «HTTP administrativo deshabilitado en LAN»** por el problema documentado de HTTPS/TLS. La situación no debe ocultarse con una marca de cumplimiento.
-
-### Recomendaciones para una siguiente iteración
-
-1. Resolver el acceso HTTPS del FortiGate, validar certificados y sincronización de tiempo/NTP; retirar HTTP de `port2` únicamente tras verificar el acceso seguro.
-2. Incorporar controles CIS adicionales cuando exista correspondencia documentada con la versión exacta de IOS/FortiOS.
-3. Revisar restricciones de origen administrativo, AAA, logging centralizado, NTP, banners y protección de credenciales.
-4. Revisar contraseñas reutilizables y vigencia de contraseñas del FortiGate de acuerdo con una política institucional.
-5. Publicar scripts directamente como `.py` **válidos y probados**, junto con dependencias y un procedimiento reproducible.
-6. Nunca incluir contraseñas, hashes, claves privadas o valores cifrados de configuración en archivos públicos.
-
-## 16. Conclusiones
-
-El laboratorio logró elevar el cumplimiento de **3 de 11 a 10 de 11 controles seleccionados**, equivalente a **27,3 % → 90,9 %** del alcance académico definido. El router y el switch finalizaron en 100 % de sus respectivos controles; FortiGate llegó al 80 % y conservó **un control pendiente debidamente justificado**.
-
-La práctica demostró el valor de evaluar las configuraciones **antes y después**, automatizar comprobaciones con Python/SSH y conservar reportes JSON y capturas como evidencia verificable. El procedimiento también evidenció una decisión operativa importante: **no sacrificar el acceso administrativo al firewall para marcar un control como corregido cuando HTTPS aún falla**.
-
-La documentación central del proyecto se presenta **en este README**, atendiendo a la observación del profesor de no depender exclusivamente de archivos PDF. Los PDF se conservan como **anexos visuales**.
-
-## 17. Referencias técnicas
-
-- [Center for Internet Security — Catálogo oficial de CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks).
-- [Fortinet — Documentación oficial de FortiOS](https://docs.fortinet.com/).
-- [Fortinet — FortiOS 7.0 Best Practices](https://docs.fortinet.com/document/fortigate/7.0.0/best-practices).
-- [Detalle de los controles y su correspondencia de buenas prácticas en este laboratorio](Documentacion/Recomendaciones_CIS.md).
-
----
-
-**Proyecto académico desarrollado en GNS3.**  
-**Pendiente de entrega:** agregar el enlace auténtico del video demostrativo al principio del README y crear el TXT final con el enlace del repositorio y del video.
+**Referencias:** [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks) · [Documentación oficial de FortiOS](https://docs.fortinet.com/) · [Recomendaciones del laboratorio](Documentacion/Recomendaciones_CIS.md).
