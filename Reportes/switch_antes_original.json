@@ -1,0 +1,19 @@
+{
+    "dispositivo": "SW-CIS",
+    "ip": "10.21.40.130",
+    "fecha_utc": "2026-11-13T01:50:02.000415+00:00",
+    "controles": {
+        "SSH_V2": {
+            "descripcion": "SSH exclusivamente version 2",
+            "cumple": false
+        },
+        "HTTP_OFF": {
+            "descripcion": "Servidor HTTP deshabilitado",
+            "cumple": false
+        },
+        "TIMEOUT_VTY": {
+            "descripcion": "Timeout VTY de cinco minutos",
+            "cumple": false
+        }
+    }
+}
