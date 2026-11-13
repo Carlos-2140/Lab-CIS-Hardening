@@ -4,8 +4,7 @@
 
 ## 🎬 Video demostrativo
 
-▶️ **Video pendiente de publicación en YouTube.** En esta sección se colocará su enlace una vez grabada la demostración del laboratorio (máximo 10 minutos, con rostro, voz, fecha y hora, según el requisito del profesor).
-
+(https://www.youtube.com/watch?v=-5HhBZeciLk)
 ---
 
 ## 1. Introducción y propósito
