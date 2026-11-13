@@ -4,7 +4,8 @@
 
 ## 🎬 Video demostrativo
 
-(https://www.youtube.com/watch?v=-5HhBZeciLk)
+▶️ **[Ver demostración del laboratorio CIS Hardening en YouTube](https://www.youtube.com/watch?v=-5HhBZeciLk)**
+
 ---
 
 ## 1. Introducción y propósito
